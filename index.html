@@ -106,7 +106,7 @@
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Operação de Iluminação Pública
                     </div>
                     <h2 class="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight">
-                        Gestão & Operação de Iluminação Pública
+                        Gestão & Manutenção de Iluminação Pública
                     </h2>
                     <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
                         Transparência e eficiência operacional em Foz do Iguaçu. Acompanhe em tempo real o registro de chamados, prazos de atendimento, resolutividade por bairro e origem dos atendimentos.
@@ -161,11 +161,11 @@
 
             <div class="kpi-card bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="flex items-center justify-between text-indigo-600 mb-1">
-                    <span class="text-xs font-semibold uppercase text-slate-500">Equipes</span>
-                    <i class="fa-solid fa-truck-field text-base"></i>
+                    <span class="text-xs font-semibold uppercase text-slate-500">Média Diária de Atendimentos</span>
+                    <i class="fa-solid fa-chart-line text-base"></i>
                 </div>
-                <div id="kpiEquipes" class="text-2xl font-black text-slate-900">0</div>
-                <p class="text-[11px] text-slate-500 mt-0.5">Equipes envolvidas</p>
+                <div id="kpiMediaDiaria" class="text-2xl font-black text-slate-900">0</div>
+                <p class="text-[11px] text-slate-500 mt-0.5">Atendimentos por dia</p>
             </div>
 
             <div class="kpi-card bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -179,11 +179,11 @@
 
             <div class="kpi-card bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="flex items-center justify-between text-rose-600 mb-1">
-                    <span class="text-xs font-semibold uppercase text-slate-500">Tempo Médio</span>
+                    <span class="text-xs font-semibold uppercase text-slate-500">Tempo Médio de Atendimentos</span>
                     <i class="fa-solid fa-clock text-base"></i>
                 </div>
                 <div id="kpiTempoMedio" class="text-2xl font-black text-slate-900">-</div>
-                <p class="text-[11px] text-slate-500 mt-0.5">Horas até conclusão</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">Horas</p>
             </div>
 
             <div class="kpi-card bg-sky-50 border border-sky-200 p-4 rounded-xl shadow-sm">
@@ -242,13 +242,13 @@
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h3 class="text-lg font-bold text-slate-900">Produtividade por Equipe</h3>
-                        <p class="text-xs text-slate-500">Total de atendimentos por equipe</p>
+                        <h3 class="text-lg font-bold text-slate-900">Status Atendimentos</h3>
+                        <p class="text-xs text-slate-500">Total de atendimentos por Status</p>
                     </div>
-                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md">Equipes</span>
+                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-md">Status Atendimentos</span>
                 </div>
                 <div class="h-64">
-                    <canvas id="equipesChart"></canvas>
+                    <canvas id="statusChart"></canvas>
                 </div>
             </div>
 
@@ -403,7 +403,7 @@
         let currentPage = 1;
         const pageSize = 15;
 
-        let bairrosChart, origemChart, equipesChart, motivosChart;
+        let bairrosChart, origemChart, statusChart, motivosChart;
 
         // ========== INICIALIZAÇÃO DO MAPA ==========
         const map = L.map('map').setView([-25.51, -54.56], 12);
@@ -542,6 +542,26 @@
             }
         }
 
+        // Converte datas por extenso em português (ex: "quarta-feira, 6 de maio de 2026")
+        // ou já em formato Date/DD-MM-YYYY para um objeto Date. Usado quando não há
+        // uma coluna de "Data Final" separada, para calcular espera/média diária
+        // a partir da única data disponível de cada atendimento.
+        const MESES_PT = {
+            janeiro: 0, fevereiro: 1, março: 2, marco: 2, abril: 3, maio: 4, junho: 5,
+            julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
+        };
+        function parseDataPT(dataStr) {
+            if (!dataStr) return null;
+            const match = String(dataStr).match(/(\d{1,2})\s+de\s+([a-zçã]+)\s+de\s+(\d{4})/i);
+            if (match) {
+                const dia = parseInt(match[1], 10);
+                const mes = MESES_PT[match[2].toLowerCase()];
+                const ano = parseInt(match[3], 10);
+                if (mes !== undefined) return new Date(ano, mes, dia);
+            }
+            return parseData(dataStr);
+        }
+
         function calcularDiasAtendimento(dataIni, dataFim) {
             if (!dataIni || !dataFim) return null;
             const d1 = new Date(dataIni);
@@ -613,20 +633,30 @@
             const total = rawData.length;
             const atendidos = rawData.filter(d => d.status.toLowerCase().includes('atendido') || d.status.toLowerCase().includes('concluído')).length;
             const bairrosUnicos = new Set(rawData.map(d => d.bairro)).size;
-            const equipesUnicas = new Set(rawData.map(d => d.equipe)).size;
             const mapeados = rawData.filter(d => d.lat !== null && d.lng !== null).length;
 
             // Taxa de conclusão
             const taxaConclusao = total > 0 ? ((atendidos / total) * 100).toFixed(1) : 0;
 
-            // Tempo médio de atendimento
-            const diasValidos = rawData.filter(d => d.diasAtendimento !== null && d.diasAtendimento > 0).map(d => d.diasAtendimento);
-            const tempoMedio = diasValidos.length > 0 
-                ? (diasValidos.reduce((a, b) => a + b, 0) / diasValidos.length * 24).toFixed(1)
-                : '-';
+            // Datas de cada atendimento (usa dataIni quando disponível; senão interpreta
+            // a data por extenso vinda dos dados embutidos/planilha)
+            const datasValidas = rawData
+                .map(d => d.dataIni || parseDataPT(d.data))
+                .filter(dt => dt instanceof Date && !isNaN(dt));
 
-            // Produtividade média por equipe
-            const prodMedia = equipesUnicas > 0 ? (total / equipesUnicas).toFixed(1) : '-';
+            // Média diária de atendimentos: total de atendimentos / dias distintos com registro
+            const diasUnicos = new Set(datasValidas.map(dt => dt.toDateString())).size;
+            const mediaDiaria = diasUnicos > 0 ? (total / diasUnicos).toFixed(1) : '-';
+
+            // Tempo médio de espera: como não há data de conclusão separada, mede-se
+            // a idade média de cada atendimento em relação ao registro mais recente da base.
+            let tempoMedio = '-';
+            if (datasValidas.length > 0) {
+                const dataMaisRecente = new Date(Math.max(...datasValidas.map(dt => dt.getTime())));
+                const diasEspera = datasValidas.map(dt => (dataMaisRecente - dt) / (1000 * 60 * 60 * 24));
+                const media = diasEspera.reduce((a, b) => a + b, 0) / diasEspera.length;
+                tempoMedio = media.toFixed(1);
+            }
 
             // Origem da Ocorrência
             const origemCount = {};
@@ -655,9 +685,9 @@
             document.getElementById('kpiAtendidosPct').innerText = taxaConclusao + '%';
             document.getElementById('kpiAtendidos').innerText = `${atendidos} de ${total}`;
             document.getElementById('kpiBairros').innerText = bairrosUnicos;
-            document.getElementById('kpiEquipes').innerText = equipesUnicas;
+            document.getElementById('kpiMediaDiaria').innerText = mediaDiaria;
             document.getElementById('kpiMapeados').innerText = mapeados.toLocaleString('pt-BR');
-            document.getElementById('kpiTempoMedio').innerText = tempoMedio === '-' ? '-' : `${tempoMedio}h`;
+            document.getElementById('kpiTempoMedio').innerText = tempoMedio === '-' ? '-' : `${tempoMedio} Horas`;
             document.getElementById('kpiTopOrigem').innerText = topOri;
             document.getElementById('kpiTopOrigemCount').innerText = `${topOriCount} registros`;
             document.getElementById('kpiTopMotivo').innerText = topMot;
@@ -681,9 +711,9 @@
 
             // 2. Define a cor do texto como BRANCO (#ffffff) por padrão para todos os rótulos
             Chart.defaults.set('plugins.datalabels', {
-                color: '#ffffff',     // Cor do texto (Branco)
+                color: '#0f172a',     // Cor do texto (Branco)
                 anchor: 'end',        // Ancorado no final da barra
-                align: 'start',       // Coloca o texto DENTRO da barra (próximo ao final)
+                align: 'end',       // Coloca o texto DENTRO da barra (próximo ao final)
                 offset: 4,            // Margem em relação ao final
                 font: {
                     weight: 'bold',
@@ -705,15 +735,25 @@
             const ctxOrigem = document.getElementById('origemChart').getContext('2d');
             origemChart = new Chart(ctxOrigem, {
                 type: 'bar',
-                data: { labels: [], datasets: [{label: 'Atendimentos', data: [], backgroundColor: ['#0088cc', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'], borderRadius: 6 }] },
+                data: { labels: [], datasets: [{label: 'Chamados', data: [], backgroundColor: ['#0088cc', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'], borderRadius: 6 }] },
                 options: { ...chartOptions, cutout: '65%' }
             });
 
-            const ctxEquipes = document.getElementById('equipesChart').getContext('2d');
-            equipesChart = new Chart(ctxEquipes, {
+            const ctxStatus = document.getElementById('statusChart').getContext('2d');
+            statusChart = new Chart(ctxStatus, {
                 type: 'bar',
-                data: { labels: [], datasets: [{ label: 'Atendimentos', data: [], backgroundColor: '#10b981', borderRadius: 6 }] },
-                options: { ...chartOptions, scales: { y: { beginAtZero: true } } }
+                data: { labels: [], datasets: [{ label: 'Status Atendimentos', data: [], backgroundColor: '#10b981', borderRadius: 6 }] },
+                options: { ...chartOptions, scales: { y: { beginAtZero: true } } },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            color: '#0f172a',
+                            font: {
+                                weight: 'bold',
+                                size: 13
+                            }}},
             });
 
             const ctxMotivos = document.getElementById('motivosChart').getContext('2d');
@@ -746,15 +786,15 @@
             origemChart.data.datasets[0].data = sortedOrigem.map(e => e[1]);
             origemChart.update();
 
-            // Equipes
-            const eqCounts = {};
+            // Status Atendimentos
+            const statusCounts = {};
             rawData.forEach(d => {
-                eqCounts[d.equipe] = (eqCounts[d.equipe] || 0) + 1;
+                statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
             });
-            const sortedEq = Object.entries(eqCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
-            equipesChart.data.labels = sortedEq.map(e => e[0]);
-            equipesChart.data.datasets[0].data = sortedEq.map(e => e[1]);
-            equipesChart.update();
+            const sortedStatus = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+            statusChart.data.labels = sortedStatus.map(e => e[0]);
+            statusChart.data.datasets[0].data = sortedStatus.map(e => e[1]);
+            statusChart.update();
 
             // Motivos
             const motCounts = {};
