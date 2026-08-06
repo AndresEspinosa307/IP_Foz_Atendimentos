@@ -86,14 +86,14 @@
                 <a href="#mapa" class="hover:text-sky-600 transition">Mapa de Pontos</a>
                 <a href="#tabela" class="hover:text-sky-600 transition">Atendimentos</a>
             </nav>
-            <!--
+            
             <div class="flex items-center gap-3">
                 <label for="excelFileInput" class="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-lg shadow-sm transition flex items-center gap-2">
                     <i class="fa-solid fa-file-excel"></i> Carregar "Atendimentos Site.xlsx"
                 </label>
                 <input type="file" id="excelFileInput" accept=".xlsx, .xls" class="hidden">
             </div>
-            -->
+        
         </div>
     </header>
 
@@ -118,7 +118,7 @@
                 <div id="fileStatusCard" class="w-full lg:w-96 bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl shadow-xl">
                     <div class="flex justify-between items-center mb-2">
                         <span class="text-xs uppercase tracking-wider text-sky-200 font-bold">Chamados Recebidos</span>
-                        <!--<span id="dataBadge" class="text-xs font-bold bg-amber-500 text-white px-2 py-0.5 rounded">Aguardando Arquivo</span>-->
+                        <span id="dataBadge" class="text-xs font-bold bg-amber-500 text-white px-2 py-0.5 rounded">Carregando Dados</span>
                     </div>
                     <div id="kpiTotal" class="text-2xl font-bold text-white mb-1 truncate">0</div>
                     <p class="text-xs text-slate-300 mb-4">Ocorrências efetivamente atendidas e solucionadas.</p>
@@ -452,7 +452,7 @@
         ];
 
         async function carregarDadosAutomaticamente() {
-            atualizarStatusArquivo('Buscando arquivo...', 'text-xs font-bold bg-sky-500 text-white px-2.5 py-1 rounded-lg');
+            atualizarStatusArquivo('Carregando Dados...', 'text-xs font-bold bg-sky-500 text-white px-2.5 py-1 rounded-lg');
             document.getElementById('progressBar').style.width = '15%';
 
             for (const arquivo of ARQUIVOS_AUTOMATICOS) {
@@ -465,7 +465,7 @@
                     const json = lerPlanilha(buffer);
                     processarDados(json);
 
-                    atualizarStatusArquivo('✓ Carregado automaticamente', 'text-xs font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg');
+                    atualizarStatusArquivo(' ✓ ', 'text-xs font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg');
                     document.getElementById('progressBar').style.width = '100%';
                     return; // sucesso: encerra a busca
                 } catch (err) {
@@ -493,7 +493,7 @@
                     const json = lerPlanilha(new Uint8Array(e.target.result));
                     processarDados(json);
 
-                    atualizarStatusArquivo('✓ Carregado manualmente', 'text-xs font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg');
+                    atualizarStatusArquivo(' ✓ ', 'text-xs font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg');
                     document.getElementById('progressBar').style.width = '100%';
                 } catch (err) {
                     console.error('Erro ao processar arquivo:', err);
