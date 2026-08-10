@@ -467,26 +467,36 @@
             atualizarStatusArquivo('Carregando Dados...', 'text-xs font-bold bg-sky-500 text-white px-2.5 py-1 rounded-lg');
             document.getElementById('progressBar').style.width = '15%';
 
+            if (location.protocol === 'file:') {
+                console.warn('[IPFOZ] Página aberta via file:// — o navegador bloqueia o fetch() de arquivos locais por segurança. Hospede em um servidor (http/https) ou use o botão de upload manual.');
+            }
+
             for (const arquivo of ARQUIVOS_AUTOMATICOS) {
                 try {
-                    const res = await fetch(encodeURI(arquivo));
-                    if (!res.ok) continue;
+                    const res = await fetch(encodeURI(arquivo), { cache: 'no-store' });
+                    if (!res.ok) {
+                        console.warn(`[IPFOZ] "${arquivo}" respondeu com status ${res.status} (${res.statusText}).`);
+                        continue;
+                    }
 
                     document.getElementById('progressBar').style.width = '60%';
                     const buffer = await res.arrayBuffer();
                     const json = lerPlanilha(buffer);
                     processarDados(json);
 
+                    console.info(`[IPFOZ] Planilha "${arquivo}" carregada automaticamente com sucesso.`);
                     atualizarStatusArquivo(' ✓ ', 'text-xs font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg');
                     document.getElementById('progressBar').style.width = '100%';
                     return; // sucesso: encerra a busca
                 } catch (err) {
-                    // arquivo não encontrado/ilegível: tenta o próximo da lista
+                    // arquivo não encontrado/ilegível/bloqueado por CORS: tenta o próximo da lista
+                    console.warn(`[IPFOZ] Falha ao buscar "${arquivo}":`, err.message);
                     continue;
                 }
             }
 
             // Nenhum arquivo mais recente encontrado no servidor: mantém os dados embutidos já exibidos
+            console.warn('[IPFOZ] Nenhum arquivo da lista ARQUIVOS_AUTOMATICOS foi encontrado/lido. Verifique nome exato do arquivo, se está na mesma pasta do index.html, e se a página está sendo servida via http(s) (não file://).');
             atualizarStatusArquivo('✓ Dados embutidos (nenhuma planilha mais recente encontrada)', 'text-xs font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg');
             document.getElementById('progressBar').style.width = '100%';
         }
