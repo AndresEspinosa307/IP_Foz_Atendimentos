@@ -135,6 +135,15 @@
 
     <!-- KPI Section -->
     <section id="kpis" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 relative z-20">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <label for="mesFilter" class="text-sm font-bold text-slate-700 flex items-center gap-2 whitespace-nowrap">
+                <i class="fa-solid fa-calendar-days text-sky-600"></i> Filtrar por Mês
+            </label>
+            <select id="mesFilter" class="text-sm border border-slate-300 rounded-lg p-2 bg-slate-50 focus:ring-2 focus:ring-sky-500 outline-none w-full sm:w-64">
+                <option value="ALL">Todos os Meses</option>
+            </select>
+            <p class="text-xs text-slate-500 sm:ml-auto">Afeta os cards, gráficos e mapa abaixo.</p>
+        </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="kpi-card bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div class="flex items-center justify-between text-sky-600 mb-1">
@@ -392,10 +401,12 @@
         }
 
         function carregarDadosEmbutidos() {
-            rawData = deduplicarPorAtendimento(expandirDadosEmbutidos(initialEmbeddedData));
+            rawData = enriquecerComMes(deduplicarPorAtendimento(expandirDadosEmbutidos(initialEmbeddedData)));
+            mesFiltroAtual = 'ALL';
             filteredData = [...rawData];
             currentPage = 1;
 
+            atualizarFiltroMes();
             atualizarKPIs();
             atualizarGraficos();
             atualizarMapa('ALL');
@@ -408,6 +419,7 @@
         let filteredData = [];
         let currentPage = 1;
         const pageSize = 15;
+        let mesFiltroAtual = 'ALL';
 
         let bairrosChart, origemChart, statusChart, motivosChart;
 
@@ -568,6 +580,76 @@
             return parseData(dataStr);
         }
 
+        // ========== FILTRO DE MÊS ==========
+        const MESES_LABEL = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+
+        // Gera a chave "YYYY-MM" usada para agrupar/filtrar por mês
+        function obterChaveMes(dataObj) {
+            if (!(dataObj instanceof Date) || isNaN(dataObj)) return null;
+            return `${dataObj.getFullYear()}-${String(dataObj.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        function obterRotuloMes(chave) {
+            const [ano, mes] = chave.split('-');
+            return `${MESES_LABEL[parseInt(mes, 10) - 1]} de ${ano}`;
+        }
+
+        // Adiciona a cada registro a chave de mês (mesAno) derivada da data,
+        // usada pelo filtro global de mês que afeta cards, gráficos e mapa.
+        function enriquecerComMes(lista) {
+            lista.forEach(item => {
+                const dt = item.dataIni || parseDataPT(item.data);
+                item.mesAno = obterChaveMes(dt);
+            });
+            return lista;
+        }
+
+        // Retorna o conjunto de dados atualmente em uso (respeitando o filtro de mês)
+        function obterDadosFiltrados() {
+            if (mesFiltroAtual === 'ALL') return rawData;
+            return rawData.filter(d => d.mesAno === mesFiltroAtual);
+        }
+
+        // Popula o <select> de meses com os meses disponíveis nos dados, do mais
+        // recente para o mais antigo, preservando a seleção atual quando possível.
+        function atualizarFiltroMes() {
+            const select = document.getElementById('mesFilter');
+            if (!select) return;
+            const chaves = [...new Set(rawData.map(d => d.mesAno).filter(Boolean))]
+                .sort((a, b) => b.localeCompare(a));
+
+            const selecaoAnterior = mesFiltroAtual;
+            select.innerHTML = '<option value="ALL">Todos os Meses</option>';
+            chaves.forEach(chave => {
+                const opt = document.createElement('option');
+                opt.value = chave;
+                opt.innerText = obterRotuloMes(chave);
+                select.appendChild(opt);
+            });
+
+            if (chaves.includes(selecaoAnterior)) {
+                select.value = selecaoAnterior;
+                mesFiltroAtual = selecaoAnterior;
+            } else {
+                select.value = 'ALL';
+                mesFiltroAtual = 'ALL';
+            }
+        }
+
+        // Reaplica o filtro de mês a cards, gráficos, mapa e tabela
+        function aplicarFiltroMes() {
+            atualizarKPIs();
+            atualizarGraficos();
+            atualizarFiltroMapa();
+            atualizarMapa(document.getElementById('mapFilter').value);
+            currentPage = 1;
+            const term = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
+            aplicarBusca(term);
+        }
+
         // Converte o valor bruto da coluna "Tempo de Espera" (que pode vir em formatos
         // bem diferentes dependendo de como a planilha foi exportada) para um número
         // de horas. Retorna null quando não é possível interpretar o valor, para que
@@ -686,10 +768,12 @@
                 };
             });
 
-            rawData = deduplicarPorAtendimento(dadosBrutos);
+            rawData = enriquecerComMes(deduplicarPorAtendimento(dadosBrutos));
+            mesFiltroAtual = 'ALL';
             filteredData = [...rawData];
             currentPage = 1;
 
+            atualizarFiltroMes();
             atualizarKPIs();
             atualizarGraficos();
             atualizarMapa('ALL');
@@ -702,17 +786,18 @@
 
         // ========== ATUALIZAÇÃO DE KPIs ==========
         function atualizarKPIs() {
-            const total = rawData.length;
-            const atendidos = rawData.filter(d => d.status.toLowerCase().includes('atendido') || d.status.toLowerCase().includes('poda')).length;
-            const bairrosUnicos = new Set(rawData.map(d => d.bairro)).size;
-            const mapeados = rawData.filter(d => d.lat !== null && d.lng !== null).length;
+            const dados = obterDadosFiltrados();
+            const total = dados.length;
+            const atendidos = dados.filter(d => d.status.toLowerCase().includes('atendido') || d.status.toLowerCase().includes('poda')).length;
+            const bairrosUnicos = new Set(dados.map(d => d.bairro)).size;
+            const mapeados = dados.filter(d => d.lat !== null && d.lng !== null).length;
 
             // Taxa de conclusão
             const taxaConclusao = total > 0 ? ((atendidos / total) * 100).toFixed(1) : 0;
 
             // Datas de cada atendimento (usa dataIni quando disponível; senão interpreta
             // a data por extenso vinda dos dados embutidos/planilha)
-            const datasValidas = rawData
+            const datasValidas = dados
                 .map(d => d.dataIni || parseDataPT(d.data))
                 .filter(dt => dt instanceof Date && !isNaN(dt));
 
@@ -722,7 +807,10 @@
 
             // Tempo médio de espera: converte a coluna "Tempo de Espera" de cada
             // atendimento para horas e calcula a média entre os registros válidos.
-            const esperaValores = rawData
+            // Atendimentos com Origem "Ronda Própria" são desconsiderados neste cálculo,
+            // pois não representam uma espera real do solicitante.
+            const esperaValores = dados
+                .filter(item => (item.origem || '').trim().toLowerCase() !== 'ronda própria')
                 .map(item => parseTempoEsperaHoras(item.espera))
                 .filter(valor => valor !== null && !isNaN(valor));
 
@@ -732,7 +820,7 @@
 
             // Origem da Ocorrência
             const origemCount = {};
-            rawData.forEach(d => {
+            dados.forEach(d => {
                 const m = d.origem || 'Não Informado';
                 origemCount[m] = (origemCount[m] || 0) + 1;
             });
@@ -743,7 +831,7 @@
 
             // Motivo mais comum
             const motCount = {};
-            rawData.forEach(d => {
+            dados.forEach(d => {
                 const mot = d.motivo || 'Não Informado';
                 motCount[mot] = (motCount[mot] || 0) + 1;
             });
@@ -837,9 +925,11 @@
         }
 
         function atualizarGraficos() {
+            const dados = obterDadosFiltrados();
+
             // Top 10 Bairros
             const bairroCounts = {};
-            rawData.forEach(d => {
+            dados.forEach(d => {
                 bairroCounts[d.bairro] = (bairroCounts[d.bairro] || 0) + 1;
             });
             const sortedBairros = Object.entries(bairroCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
@@ -849,7 +939,7 @@
 
             // Origem da Ocorrência
             const oriCounts = {};
-            rawData.forEach(d => {
+            dados.forEach(d => {
                 const m = d.origem || 'Não Informado';
                 oriCounts[m] = (oriCounts[m] || 0) + 1;
             });
@@ -860,7 +950,7 @@
 
             // Status Atendimentos
             const statusCounts = {};
-            rawData.forEach(d => {
+            dados.forEach(d => {
                 statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
             });
             const sortedStatus = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -870,7 +960,7 @@
 
             // Motivos
             const motCounts = {};
-            rawData.forEach(d => {
+            dados.forEach(d => {
                 motCounts[d.motivo] = (motCounts[d.motivo] || 0) + 1;
             });
             const sortedMot = Object.entries(motCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -881,8 +971,10 @@
 
         // ========== MAPA ==========
         function atualizarFiltroMapa() {
-            const uniqueBairros = [...new Set(rawData.map(p => p.bairro))].sort();
+            const dados = obterDadosFiltrados();
+            const uniqueBairros = [...new Set(dados.map(p => p.bairro))].sort();
             const mapFilterSelect = document.getElementById('mapFilter');
+            const selecaoAnterior = mapFilterSelect.value;
             mapFilterSelect.innerHTML = '<option value="ALL">Todos os Bairros</option>';
             uniqueBairros.forEach(b => {
                 if (b) {
@@ -892,18 +984,21 @@
                     mapFilterSelect.appendChild(opt);
                 }
             });
+            mapFilterSelect.value = uniqueBairros.includes(selecaoAnterior) ? selecaoAnterior : 'ALL';
         }
 
         function atualizarMapa(bairroFiltro) {
             markersCluster.clearLayers();
-            
+            const dados = obterDadosFiltrados();
+
             // Filtra por bairro E garante que o status seja 'Atendido' ou 'Poda'
-            const filtered = rawData.filter(p => {
+            const filtered = dados.filter(p => {
                 const statusValido = p.status === 'Atendido' || p.status === 'Poda';
                 const bairroValido = bairroFiltro === 'ALL' || p.bairro === bairroFiltro;
                 return statusValido && bairroValido;
             });
-            
+
+            let pontosExibidos = 0;
             filtered.forEach(p => {
                 if (p.lat && p.lng) {
                     const cor = p.status.toLowerCase().includes('atendido') ? '#0081de' : '#f59e0b';
@@ -917,8 +1012,10 @@
                     });
                     marker.bindPopup(`<strong>${p.bairro}</strong><br>${p.local}<br>Status: ${p.status}<br><strong>${p.protocolo}`);
                     markersCluster.addLayer(marker);
+                    pontosExibidos++;
                 }
             });
+            document.getElementById('mapPointCount').innerText = pontosExibidos.toLocaleString('pt-BR');
         }
 
         document.getElementById('mapFilter').addEventListener('change', (e) => {
@@ -967,18 +1064,32 @@
             renderizarTabela();
         }
 
+        // Aplica a busca textual sobre o conjunto já filtrado por mês
+        function aplicarBusca(term) {
+            const base = obterDadosFiltrados();
+            filteredData = term
+                ? base.filter(p =>
+                    p.bairro.toLowerCase().includes(term) ||
+                    p.local.toLowerCase().includes(term) ||
+                    p.id.toString().includes(term) ||
+                    p.protocolo.toLowerCase().includes(term) ||
+                    p.motivo.toLowerCase().includes(term) ||
+                    p.solucao.toLowerCase().includes(term)
+                )
+                : [...base];
+            renderizarTabela();
+        }
+
         document.getElementById('searchInput').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase();
-            filteredData = rawData.filter(p => 
-                p.bairro.toLowerCase().includes(term) ||
-                p.local.toLowerCase().includes(term) ||
-                p.id.toString().includes(term) ||
-                p.protocolo.toLowerCase().includes(term) ||
-                p.motivo.toLowerCase().includes(term) ||
-                p.solucao.toLowerCase().includes(term)
-            );
             currentPage = 1;
-            renderizarTabela();
+            aplicarBusca(term);
+        });
+
+        // ========== FILTRO GLOBAL DE MÊS ==========
+        document.getElementById('mesFilter').addEventListener('change', (e) => {
+            mesFiltroAtual = e.target.value;
+            aplicarFiltroMes();
         });
 
         function exportCSV() {
