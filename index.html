@@ -502,7 +502,14 @@
         }
 
         // ========== UPLOAD MANUAL ==========
-        document.getElementById('excelFileInput').addEventListener('change', function(e) {
+        // Guardado contra elemento ausente: se não existir um <input id="excelFileInput">
+        // no HTML, isso não pode derrubar o restante do script (o que travava o
+        // carregamento automático antes de MESES_PT/ARQUIVOS_AUTOMATICOS serem inicializados).
+        const excelFileInputEl = document.getElementById('excelFileInput');
+        if (!excelFileInputEl) {
+            console.warn('[IPFOZ] Elemento #excelFileInput não encontrado no HTML — upload manual desativado (não afeta o carregamento automático).');
+        }
+        excelFileInputEl?.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
